@@ -611,7 +611,7 @@ class SynopsisGeneratorAgent(BaseAgent):
                     "both": "натощак и после приема высококалорийной пищи",
                 }.get(intake_mode, "натощак")
                 logger.info(f"ℹ️ Режим приёма из инструкции к {ref_drug}: {_suggested}")
-        elif not intake_mode_input and _drug_name_for_fetch:
+        elif not intake_mode_input and (reference_drug_name or ref_drug):
             # Fallback: ищем режим приёма через Yandex Search
             try:
                 from app.services.search.yandex_search import search_intake_mode
