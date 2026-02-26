@@ -27,5 +27,15 @@ class SampleSizeResult(BaseModel):
     blood_volume_ml: float = Field(0.0, description="Общий объём крови (мл)")
     blood_volume_ok: bool = Field(True, description="Не превышает 450 мл")
 
+    # === Адаптивный дизайн ===
+    needs_adaptive: bool = Field(
+        False,
+        description=(
+            "n_base > 80 (без dropout/screenfail) → требуется адаптивный дизайн. "
+            "Pipeline должен переключить на adaptive_crossover или adaptive_parallel "
+            "и пересчитать выборку."
+        ),
+    )
+
     # === Текстовое описание ===
     calculation_description: str = Field("", description="Описание расчёта для синопсиса")
