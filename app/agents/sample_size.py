@@ -29,6 +29,8 @@ DEFAULT_THETA = 1.25          # Верхняя граница БЭ 80-125%
 DEFAULT_SCREENFAIL = 0.15     # Screen failure rate 15%
 DEFAULT_DROPOUT = 0.15        # Dropout rate 15%
 MIN_SUBJECTS = 12             # Минимум 12 человек (Решение ЕАЭС №85)
+MAX_BASE_SUBJECTS = 80        # Максимум 80 человек (без dropout/screenfail) → адаптивный дизайн
+MAX_CV_INTRA = 60.0           # CVintra не может превышать 60% (ошибки LLM при комби-препаратах)
 BLOOD_PER_POINT_ML = 5.0
 MAX_BLOOD_ML = 450.0
 CV_HVD_THRESHOLD = 30.0       # CVintra ≥ 30% → HVD
@@ -72,6 +74,9 @@ class SampleSizeAgent(BaseAgent):
         if cv_intra is None:
             cv_intra = 30.0
 
+        # CVintra ограничен сверху 60% (defensive)
+        cv_intra = min(cv_intra, MAX_CV_INTRA)
+
         # Определяем HVD по CVintra
         if cv_intra >= CV_HVD_THRESHOLD:
             is_hvd = True
@@ -81,6 +86,10 @@ class SampleSizeAgent(BaseAgent):
             cv_intra=cv_intra, gmr=gmr, n_periods=n_periods,
             is_hvd=is_hvd, is_nti=is_nti,
         )
+
+        # Проверка: n_base > 80 → нужен адаптивный дизайн
+        max_base = overrides.get("max_base_subjects", MAX_BASE_SUBJECTS)
+        needs_adaptive = n_base > max_base
 
         # Коррекции
         n_with_dropout = math.ceil(n_base / (1 - dropout_rate))
@@ -111,6 +120,7 @@ class SampleSizeAgent(BaseAgent):
             screenfail_rate=screenfail_rate,
             blood_volume_ml=blood_volume,
             blood_volume_ok=blood_ok,
+            needs_adaptive=needs_adaptive,
             calculation_description=calc_desc,
         )
         return AgentResult(data=result, sources=["formula", "decision_85"])
