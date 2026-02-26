@@ -62,16 +62,19 @@ class Pipeline:
         # Извлекаем типизированные данные
         pk_data: PKResult = pk_res.data
 
-        # Извлекаем drug_info и protocol_data из PK Agent (один парсинг!)
-        drug_info = getattr(pk_data, '_drug_info', None)
-        protocol_data = getattr(pk_data, '_protocol_data', None)
-        hvd_component_ru = getattr(pk_data, '_hvd_component_ru', "")
-        hvd_component_en = getattr(pk_data, '_hvd_component_en', "")
-        hvd_cv_value = getattr(pk_data, '_hvd_cv_value', None)
-
         # Если пользователь указал CVintra или T½ — они приоритетнее
         cv_intra = payload.cv_intra or pk_data.cv_intra_max
         t_half = payload.t_half_hours or pk_data.t_half_hours
+
+        # CVintra не может превышать 60% — значения выше редки и обычно
+        # вызваны ошибкой LLM при комбинированных препаратах (несколько ДВ).
+        MAX_CV_INTRA = 60.0
+        if cv_intra is not None and cv_intra > MAX_CV_INTRA:
+            print(
+                f"  ⚠️ CVintra={cv_intra}% > {MAX_CV_INTRA}% — "
+                f"ограничено до {MAX_CV_INTRA}%"
+            )
+            cv_intra = MAX_CV_INTRA
 
         # ═══════════════════════════════════════
         # ШАГ 2: Design Agent
@@ -126,6 +129,23 @@ class Pipeline:
         size_data: SampleSizeResult = size_res.data
 
         # ═══════════════════════════════════════
+        # ШАГ 3.1: Проверка n_base > 80 → адаптивный дизайн
+        # ═══════════════════════════════════════
+        # Если n_base (без dropout/screenfail) > 80 добровольцев,
+        # перезапускаем Design Agent с force_adaptive=True,
+        # затем пересчитываем выборку.
+
+        if size_data.needs_adaptive:
+            design_input["force_adaptive"] = True
+            design_res = await self.design_agent.run(design_input)
+            design_data = design_res.data
+
+            # Пересчитываем выборку с новым дизайном
+            size_input["design"] = design_data
+            size_res = await self.size_agent.run(size_input)
+            size_data = size_res.data
+
+        # ═══════════════════════════════════════
         # ШАГ 4: Synopsis Generator
         # ═══════════════════════════════════════
         # Получает: ВСЁ (пользовательский ввод + результаты всех агентов)
@@ -137,17 +157,8 @@ class Pipeline:
             "regulatory": reg_res.data,
             "design": design_data,
             "sample_size": size_data,
-            "drug_info": drug_info,            # из PK Agent (один раз!)
-            "protocol_data": protocol_data,    # из PK Agent
-            "hvd_component_ru": hvd_component_ru,
-            "hvd_component_en": hvd_component_en,
-            "hvd_cv_value": hvd_cv_value,
         }
         syn_res = await self.syn_agent.run(syn_input)
-
-        # ═══════════════════════════════════════
-        # Собираем результат
-        # ═══════════════════════════════════════
 
         all_sources = []
         for res in [pk_res, reg_res, design_res, size_res, syn_res]:
