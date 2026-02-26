@@ -56,13 +56,24 @@ class PKResult(BaseModel):
 
     @property
     def cv_intra_max(self) -> Optional[float]:
-        """Наибольший CVintra (для расчёта выборки берём наибольший)."""
+        """
+        Наибольший CVintra (для расчёта выборки берём наибольший).
+
+        При наличии нескольких действующих веществ — берём max из CVintra(Cmax)
+        и CVintra(AUC). Значение ограничено сверху 60%: значения выше редки
+        и обычно вызваны ошибкой извлечения данных агентами при наличии
+        нескольких действующих веществ в комбинированных препаратах.
+        """
+        MAX_CV_INTRA = 60.0
+
         vals = []
         if self.cv_intra_cmax and self.cv_intra_cmax.value is not None:
             vals.append(self.cv_intra_cmax.value)
         if self.cv_intra_auc and self.cv_intra_auc.value is not None:
             vals.append(self.cv_intra_auc.value)
-        return max(vals) if vals else None
+        if not vals:
+            return None
+        return min(max(vals), MAX_CV_INTRA)
 
     @property
     def t_half_hours(self) -> Optional[float]:
