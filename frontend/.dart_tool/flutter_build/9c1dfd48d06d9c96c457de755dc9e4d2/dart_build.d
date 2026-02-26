@@ -1,0 +1,1 @@
+ /Users/valeriashchepilova/ifarma_project/frontend/.dart_tool/flutter_build/9c1dfd48d06d9c96c457de755dc9e4d2/dart_build_result.json: 

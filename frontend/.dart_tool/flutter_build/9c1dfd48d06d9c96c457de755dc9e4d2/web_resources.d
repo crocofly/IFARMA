@@ -1,0 +1,1 @@
+:  /Users/valeriashchepilova/ifarma_project/frontend/web/index.html
