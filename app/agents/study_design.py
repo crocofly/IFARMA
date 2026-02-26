@@ -51,9 +51,13 @@ class StudyDesignAgent(BaseAgent):
         is_hvd = input_data.get("is_hvd", False)        # bool
         release_type = input_data.get("release_type", "immediate")  # str
         intake_mode_input = input_data.get("intake_mode")           # str | None
+        force_adaptive = input_data.get("force_adaptive", False)    # bool — Pipeline ставит True при n_base > 80
 
         # ── Шаг 2: Дерево решений — выбираем дизайн ──
-        design = self._select_design(cv_intra, t_half, is_nti, is_hvd)
+        if force_adaptive:
+            design = self._select_adaptive_design(cv_intra, t_half, is_nti, is_hvd)
+        else:
+            design = self._select_design(cv_intra, t_half, is_nti, is_hvd)
 
         # ── Шаг 3: Рассчитываем отмывочный период ──
         washout_days, washout_formula = self._calculate_washout(t_half, design)
@@ -145,6 +149,27 @@ class StudyDesignAgent(BaseAgent):
         # Правило 4: Стандартный случай → 2×2 перекрёстный
         return DesignType.CROSSOVER_2X2
 
+    def _select_adaptive_design(
+        self,
+        cv_intra: float | None,
+        t_half: float | None,
+        is_nti: bool,
+        is_hvd: bool,
+    ) -> DesignType:
+        """
+        Выбирает адаптивный дизайн, когда n_base > 80 добровольцев.
+
+        Pipeline вызывает этот метод через force_adaptive=True,
+        если после первого расчёта выборки n_base превысил 80.
+
+        Правила:
+        - T½ > 24ч (исходно параллельный) → адаптивный параллельный
+        - Остальные случаи → адаптивный перекрёстный
+        """
+        if t_half is not None and t_half > T_HALF_LONG_THRESHOLD:
+            return DesignType.ADAPTIVE_PARALLEL
+        return DesignType.ADAPTIVE_CROSSOVER
+
     def _calculate_washout(
         self,
         t_half: float | None,
@@ -156,8 +181,8 @@ class StudyDesignAgent(BaseAgent):
         Формула: 5-6 × T½ (с запасом на медленных метаболизаторов).
         Для параллельного дизайна отмывочный период не нужен.
         """
-        # Параллельный → нет отмывочного
-        if design == DesignType.PARALLEL:
+        # Параллельный / адаптивный параллельный → нет отмывочного
+        if design in (DesignType.PARALLEL, DesignType.ADAPTIVE_PARALLEL):
             return None, "Параллельный дизайн — отмывочный период не требуется"
 
         # Нет данных о T½
@@ -302,6 +327,12 @@ class StudyDesignAgent(BaseAgent):
         if design == DesignType.PARALLEL:
             return 0.10, "Параллельный дизайн, 1 период — минимальный dropout 10%"
 
+        if design == DesignType.ADAPTIVE_PARALLEL:
+            return 0.15, "Адаптивный параллельный дизайн (двухэтапный) — dropout 15%"
+
+        if design == DesignType.ADAPTIVE_CROSSOVER:
+            return 0.15, "Адаптивный перекрёстный дизайн (двухэтапный) — dropout 15%"
+
         if design in (DesignType.REPLICATE_3, DesignType.REPLICATE_4):
             rate = 0.25
             text = "Репликативный дизайн (3-4 периода) — dropout не менее 25%"
@@ -355,6 +386,20 @@ class StudyDesignAgent(BaseAgent):
 
         if design == DesignType.PARALLEL:
             return 1, 2, "Группа 1: T (тест). Группа 2: R (референс)"
+
+        if design == DesignType.ADAPTIVE_CROSSOVER:
+            return 2, 2, (
+                "Двухэтапный адаптивный перекрёстный дизайн. "
+                "Этап 1: пилотная группа (TR/RT). "
+                "Этап 2: расширенная группа на основе промежуточного анализа"
+            )
+
+        if design == DesignType.ADAPTIVE_PARALLEL:
+            return 1, 2, (
+                "Двухэтапный адаптивный параллельный дизайн. "
+                "Этап 1: пилотная группа (T vs R). "
+                "Этап 2: расширенная группа на основе промежуточного анализа"
+            )
 
         return 2, 2, ""
 
