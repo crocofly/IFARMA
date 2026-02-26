@@ -18,6 +18,8 @@ class DesignType(str, Enum):
     REPLICATE_3 = "replicate_3_period"         # Репликативный 3-периодный (TRT/RTR)
     REPLICATE_4 = "replicate_4_period"         # Репликативный 4-периодный (TRTR/RTRT)
     PARALLEL = "parallel"                       # Параллельный: 2 группы, нет перекреста
+    ADAPTIVE_CROSSOVER = "adaptive_crossover"   # Адаптивный перекрёстный (двухэтапный)
+    ADAPTIVE_PARALLEL = "adaptive_parallel_1"   # Адаптивный параллельный (двухэтапный)
 
 
 class IntakeMode(str, Enum):
